@@ -1,4 +1,9 @@
 #include "systemcalls.h"
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <fcntl.h>
 
 /**
  * @param cmd the command to execute with system()
@@ -15,9 +20,10 @@ bool do_system(const char *cmd)
  *  Call the system() function with the command set in the cmd
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
+ * 
+ * DONE
 */
-
-    return true;
+    return system(cmd) == 0;
 }
 
 /**
@@ -33,11 +39,11 @@ bool do_system(const char *cmd)
 *   fork, waitpid, or execv() command, or if a non-zero return value was returned
 *   by the command issued in @param arguments with the specified arguments.
 */
-
 bool do_exec(int count, ...)
 {
     va_list args;
     va_start(args, count);
+    bool result = true;
     char * command[count+1];
     int i;
     for(i=0; i<count; i++)
@@ -56,12 +62,46 @@ bool do_exec(int count, ...)
  *   Use the command[0] as the full path to the command to execute
  *   (first argument to execv), and use the remaining arguments
  *   as second argument to the execv() command.
- *
+ * 
+ * DONE
 */
+    bool parent = true;
+    pid_t pid = fork();
+    switch (pid)
+    {
+    case -1:
+        printf("Cannot fork!\n");
+        result = false;
+        goto end;
+        break;
+    
+    case 0:
+        parent = false;
+        break;
+    
+    default:
+        break;
+    }
 
+    if (parent) {
+        int status = 0;
+        if (wait(&status) == -1) {
+            printf("Parent failed to wait!\n");
+            result = false;
+        } else if (WEXITSTATUS(status) != 0) {
+            printf("Child exited with non-zero status!\n");
+            result = false;
+        }
+    } else {
+        if (execv(command[0], command) == -1) {
+            printf("Child failed to exec command!\n");
+            _exit(1);
+        }
+    }
+end:
     va_end(args);
-
-    return true;
+    printf("Parent returning %s\n", result ? "true" : "false");
+    return result;
 }
 
 /**
@@ -73,6 +113,7 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
 {
     va_list args;
     va_start(args, count);
+    bool result = true;
     char * command[count+1];
     int i;
     for(i=0; i<count; i++)
@@ -91,9 +132,51 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *   redirect standard out to a file specified by outputfile.
  *   The rest of the behaviour is same as do_exec()
  *
+ * DONE
 */
+    bool parent = true;
+    pid_t pid = fork();
+    switch (pid)
+    {
+    case -1:
+        printf("Cannot fork!\n");
+        result = false;
+        goto end;
+        break;
+    
+    case 0:
+        parent = false;
+        break;
+    
+    default:
+        break;
+    }
 
+    if (parent) {
+        int status = 0;
+        if (wait(&status) == -1) {
+            printf("Parent failed to wait!\n");
+            result = false;
+        } else if (WEXITSTATUS(status) != 0) {
+            printf("Child exited with non-zero status!\n");
+            result = false;
+        }
+    } else {
+        int fd = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT, 0644);
+        if (fd < 0) {
+            _exit(1);
+        }
+        if (dup2(fd, 1) < 0) {
+            _exit(1);
+        }
+        close(fd);
+        if (execv(command[0], command) == -1) {
+            printf("Child failed to exec command!\n");
+            _exit(1);
+        }
+    }
+end:
     va_end(args);
-
-    return true;
+    printf("Parent returning %s\n", result ? "true" : "false");
+    return result;
 }
